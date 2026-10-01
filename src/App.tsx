@@ -1652,21 +1652,20 @@ function FinanceEditor<T extends FinanceLine | ExpenseLine>({
 						</select>
 					)}
 					<input
-						className="amount-input"
-						type="number"
-						min="0"
-						step="1000"
-						placeholder="0"
-						value={item.amount || ""}
-						onChange={(e) =>
-							onChange(
-								items.map((current, i) =>
-									i === index
-										? { ...current, amount: Number(e.target.value) }
-										: current,
-								),
-							)
-						}
+					className="amount-input"
+					type="text"
+					inputMode="numeric"
+					placeholder="0 ₫"
+					value={item.amount ? money.format(item.amount) : ""}
+					onChange={(e) => {
+						const digits = e.target.value.replace(/\D/g, "");
+						const amount = digits ? Number(digits) : 0;
+						onChange(
+							items.map((current, i) =>
+								i === index ? { ...current, amount } : current,
+							),
+						);
+					}}
 					/>
 					<button
 						type="button"
