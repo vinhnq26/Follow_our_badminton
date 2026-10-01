@@ -10,6 +10,8 @@ import {
 	Download,
 	Droplets,
 	Edit3,
+	Eye,
+	EyeOff,
 	History,
 	LogIn,
 	LogOut,
@@ -338,13 +340,11 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
 
 function Logo({ compact = false }: { compact?: boolean }) {
 	return (
-		<div className="logo">
+		<div className={`logo ${compact ? "logo-compact" : ""}`}>
 			<span className="logo-mark">
-				<Zap size={compact ? 16 : 20} fill="currentColor" />
+				<img src="/verexe-logo.svg" alt="" aria-hidden="true" />
 			</span>
-			<span>
-				Follow<span className="logo-dot">.</span>
-			</span>
+			<span className="logo-name">Cầu Lông VXR</span>
 		</div>
 	);
 }
@@ -368,7 +368,7 @@ function PublicShell({
 		<div className="app-shell public-shell">
 			<header className="public-header">
 				<div className="container header-inner">
-					<button className="brand-button" onClick={() => navigate("/")}>
+					<button type="button" className="brand-button" onClick={() => navigate("/")}>
 						<Logo />
 					</button>
 					<button
@@ -444,13 +444,13 @@ function HomePage({
 							· LỊCH LINH HOẠT
 						</div>
 						<h1 style={{ letterSpacing: 1 }}>
-							Chơi hết mình.
-							<br />
-							<em style={{ letterSpacing: 1 }}>Ghi chép rõ ràng.</em>
+							{/* Chơi hết mình.
+							<br /> */}
+							<em style={{ letterSpacing: 1 }}>Thể thao là không ngừng bỏ cuộc!</em>
 						</h1>
 						<p className="hero-lede">
 							Lịch trận, tiền sân và từng khoản chi của {GROUP_PROFILE.name} —
-							minh bạch để mọi buổi cầu tại PIXIHUB đều thật vui.
+							 để mọi buổi cầu đều thật vui.
 						</p>
 						<div className="hero-actions">
 							<button
@@ -525,7 +525,7 @@ function HomePage({
 				<div className="container">
 					<div className="section-heading">
 						<div>
-							<p className="eyebrow">MINH BẠCH TỪNG KHOẢN</p>
+							<p className="eyebrow">NHỮNG MỤC ĐÃ CHI</p>
 							<h2>Chi phí của một buổi cầu</h2>
 						</div>
 						<button
@@ -570,9 +570,6 @@ function HomePage({
 			</section>
 			<section className="cta-section container">
 				<div>
-					<span className="cta-icon">
-						<Sparkles size={20} />
-					</span>
 					<h2>
 						Mọi người cùng xem,
 						<br />
@@ -944,9 +941,25 @@ function AdminShell({
 			: path.includes("members")
 				? "members"
 				: "overview";
+	const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+	useEffect(() => {
+		if (path) setMobileSidebarOpen(false);
+	}, [path]);
+	useEffect(() => {
+		if (!mobileSidebarOpen) return;
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (event.key === "Escape") setMobileSidebarOpen(false);
+		};
+		document.addEventListener("keydown", onKeyDown);
+		return () => document.removeEventListener("keydown", onKeyDown);
+	}, [mobileSidebarOpen]);
+	const goTo = (nextPath: string) => {
+		setMobileSidebarOpen(false);
+		navigate(nextPath);
+	};
 	return (
 		<div className="admin-shell">
-			<aside className="admin-sidebar">
+			<aside className={`admin-sidebar ${mobileSidebarOpen ? "is-open" : ""}`} id="admin-navigation">
 				<div className="admin-brand">
 					<Logo />
 					<span className="admin-label">
@@ -956,41 +969,52 @@ function AdminShell({
 				<nav>
 					<button
 						className={section === "overview" ? "active" : ""}
-						onClick={() => navigate("/admin/overview")}
+						onClick={() => goTo("/admin/overview")}
 					>
 						<BarChart3 size={18} /> Tổng quan
 					</button>
 					<button
 						className={section === "matches" ? "active" : ""}
-						onClick={() => navigate("/admin/matches")}
+						onClick={() => goTo("/admin/matches")}
 					>
 						<CalendarDays size={18} /> Quản lý trận
 					</button>
 					<button
 						className={section === "members" ? "active" : ""}
-						onClick={() => navigate("/admin/members")}
+						onClick={() => goTo("/admin/members")}
 					>
 						<Users size={18} /> Thành viên
 					</button>
 					<button
 						className={section === "reports" ? "active" : ""}
-						onClick={() => navigate("/admin/reports")}
+						onClick={() => goTo("/admin/reports")}
 					>
 						<Table2 size={18} /> Báo cáo tháng
 					</button>
 				</nav>
 				<div className="sidebar-bottom">
-					<button onClick={() => navigate("/")}>
+					<button type="button" onClick={() => goTo("/")}>
 						<ArrowRight size={16} /> Về trang thành viên
 					</button>
-					<button className="logout-link" onClick={logout}>
+					<button type="button" className="logout-link" onClick={() => { setMobileSidebarOpen(false); void logout(); }}>
 						<LogOut size={16} /> Đăng xuất
 					</button>
 				</div>
 			</aside>
 			<main className="admin-main">
 				<header className="admin-topbar">
-					<div>
+					<div className="admin-topbar-leading">
+						<button
+							type="button"
+							className="admin-menu-button"
+							aria-label={mobileSidebarOpen ? "Đóng menu quản trị" : "Mở menu quản trị"}
+							aria-expanded={mobileSidebarOpen}
+							aria-controls="admin-navigation"
+							onClick={() => setMobileSidebarOpen((open) => !open)}
+						>
+							{mobileSidebarOpen ? <X size={19} /> : <Menu size={19} />}
+						</button>
+						<div>
 						<span className="admin-mobile-logo">
 							<Logo compact />
 						</span>
@@ -1007,12 +1031,21 @@ function AdminShell({
 							</strong>
 						</span>
 					</div>
+					</div>
 					<div className="admin-user">
 						<span className="admin-avatar">A</span>
 						<span>Admin</span>
 						<span className="online-dot" />
 					</div>
 				</header>
+				{mobileSidebarOpen ? (
+					<button
+						type="button"
+						className="admin-menu-backdrop"
+						aria-label="Đóng menu quản trị"
+						onClick={() => setMobileSidebarOpen(false)}
+					/>
+				) : null}
 				{section === "overview" ? (
 					<AdminOverview
 						matches={matches}
@@ -2008,6 +2041,7 @@ function LoginPage({
 }) {
 	const [username, setUsername] = useState("");
 	const [password, setPassword] = useState("");
+	const [showPassword, setShowPassword] = useState(false);
 	const [error, setError] = useState("");
 	const [saving, setSaving] = useState(false);
 	const submit = async (event: React.SyntheticEvent<HTMLFormElement>) => {
@@ -2024,69 +2058,81 @@ function LoginPage({
 		}
 	};
 	return (
-		<div className="login-shell">
-			<div className="login-decoration">
-				<div className="login-orb orb-one" />
-				<div className="login-orb orb-two" />
-				<div className="login-court" />
-				<div className="login-copy">
-					<Logo />
-					<span>{GROUP_PROFILE.name.toUpperCase()} · QUẢN TRỊ DỮ LIỆU</span>
-					<h1>
-						Mỗi trận cầu
-						<br />
-						<em>một câu chuyện rõ ràng.</em>
-					</h1>
-				</div>
-			</div>
-			<main className="login-card">
-				<button type="button" className="back-link" onClick={onBack}>
-					← Về trang thành viên
-				</button>
-				<div className="login-heading">
-					<span className="login-icon">
-						<ShieldCheck size={21} />
-					</span>
-					<span className="eyebrow">KHU VỰC QUẢN TRỊ</span>
-					<h2>Chào mừng trở lại</h2>
-					<p>Đăng nhập để cập nhật lịch đánh và thu chi của nhóm.</p>
-				</div>
-				<form onSubmit={submit}>
-					<label>
-						Email quản trị
-						<input
-							type="email"
-							value={username}
-							onChange={(e) => setUsername(e.target.value)}
-							placeholder="admin@example.com"
-						/>
-					</label>
-					<label>
-						Mật khẩu
-						<input
-							type="password"
-							value={password}
-							onChange={(e) => setPassword(e.target.value)}
-							placeholder="Nhập mật khẩu"
-						/>
-					</label>
-					{error ? <div className="form-error">{error}</div> : null}
-					<button type="submit" className="button button-primary login-submit" disabled={saving}>
-						<LogIn size={17} /> {saving ? "Đang đăng nhập..." : "Đăng nhập"}
-					</button>
-				</form>
-				<div className="demo-hint">
-					<span>
-						<Sparkles size={15} />{" "}
-					</span>
-				</div>
-				<p className="login-disclaimer">
-					Tài khoản được xác thực bằng Supabase Auth. Dữ liệu nhóm được lưu dùng chung
-					trên Supabase.
-				</p>
-			</main>
-		</div>
-	);
+    <div className="login-shell">
+      <div className="login-decoration">
+        <div className="login-orb orb-one" />
+        <div className="login-orb orb-two" />
+        <div className="login-court" />
+        <div className="login-copy">
+          <Logo />
+          <span>{GROUP_PROFILE.name.toUpperCase()} · QUẢN TRỊ DỮ LIỆU</span>
+          <h1>
+            Mỗi trận cầu
+            <br />
+            <em>một câu chuyện rõ ràng.</em>
+          </h1>
+        </div>
+      </div>
+      <main className="login-card">
+        <button type="button" className="back-link" onClick={onBack}>
+          ← Về trang thành viên
+        </button>
+        <div className="login-heading">
+          <span className="login-icon">
+            <ShieldCheck size={21} />
+          </span>
+          <span className="eyebrow">KHU VỰC QUẢN TRỊ</span>
+          <h2>Chào mừng trở lại</h2>
+          <p>Đăng nhập để cập nhật lịch đánh và thu chi của nhóm.</p>
+        </div>
+        <form onSubmit={submit}>
+          <label>
+            Email quản trị
+            <input
+              type="email"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="admin@example.com"
+            />
+          </label>
+          <label>
+            Mật khẩu
+            <span className="password-field">
+              <input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Nhập mật khẩu"
+              />
+              <button
+                type="button"
+                className="password-toggle"
+                aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+                aria-pressed={showPassword}
+                onClick={() => setShowPassword((visible) => !visible)}
+              >
+                {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+              </button>
+            </span>
+          </label>
+          {error ? <div className="form-error">{error}</div> : null}
+          <button
+            type="submit"
+            className="button button-primary login-submit"
+            disabled={saving}
+          >
+            <LogIn size={17} /> {saving ? "Đang đăng nhập..." : "Đăng nhập"}
+          </button>
+        </form>
+        <div className="demo-hint">
+          <p className="login-disclaimer">
+            Tài khoản được xác thực bằng Supabase Auth. Dữ liệu nhóm được lưu
+            dùng chung trên Supabase.
+          </p>
+        </div>
+      </main>
+    </div>
+  );
 }
 function EmptyState({ text }: { text: string }) {
 	return (

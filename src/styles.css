@@ -42,3 +42,25 @@ body, body * { letter-spacing: 1px !important; }
 .report-actions .subtle-button { min-height: 45px; }
 button:disabled { cursor: not-allowed; opacity: .62; transform: none !important; }
 @media (max-width: 680px) { .report-actions { width: 100%; justify-content: stretch; }.report-actions .month-select,.report-actions .button,.report-actions .subtle-button { width: 100%; }.report-actions .month-select select { width: 100%; } }
+
+/* VXR temporary brand and mobile admin navigation. */
+.logo-mark { overflow: hidden; background: transparent; border-radius: 9px; transform: none; }
+.logo-mark img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+.logo-name { letter-spacing: -.04em; }
+.logo-compact .logo-name { font-size: .82em; }
+.admin-topbar-leading { display: flex; align-items: center; gap: 10px; }
+.admin-menu-button { display: none; place-items: center; width: 34px; height: 34px; color: var(--teal-dark); background: #eef5f2; border-radius: 9px; }
+.admin-menu-backdrop { display: none; }
+.password-field { position: relative; display: block; }
+.password-field input { padding-right: 44px !important; }
+.password-toggle { position: absolute; top: 50%; right: 8px; display: grid; place-items: center; width: 30px; height: 30px; color: var(--muted); background: transparent; border-radius: 7px; transform: translateY(-50%); }
+.password-toggle:hover { color: var(--teal-dark); background: #e2f3ed; }
+@media (max-width: 680px) {
+  .admin-menu-button { display: grid; }
+  .admin-sidebar { display: flex; position: fixed; z-index: 45; top: 0; bottom: 0; left: 0; width: min(286px, 86vw); height: 100vh; transform: translateX(-105%); transition: transform .22s ease; box-shadow: 18px 0 45px rgba(10, 38, 31, .22); }
+  .admin-sidebar.is-open { transform: translateX(0); }
+  .admin-menu-backdrop { position: fixed; z-index: 35; inset: 0; display: block; background: rgba(11, 34, 29, .48); }
+  .admin-topbar { position: relative; z-index: 40; }
+  .admin-topbar-leading > div { min-width: 0; }
+  .admin-mobile-logo .logo-name { font-size: 16px; }
+}

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Vexere</title>
+  <desc id="desc">Blue rounded square with a yellow bus icon</desc>
+  <rect width="256" height="256" rx="52" fill="#2d75d9"/>
+  <g fill="#ffd12f">
+    <rect x="76" y="36" width="104" height="126" rx="14"/>
+    <rect x="66" y="52" width="124" height="106" rx="10"/>
+    <rect x="84" y="176" width="24" height="38" rx="12"/>
+    <rect x="148" y="176" width="24" height="38" rx="12"/>
+    <circle cx="68" cy="105" r="13"/>
+    <circle cx="188" cy="105" r="13"/>
+  </g>
+  <rect x="86" y="64" width="84" height="57" rx="3" fill="#2d75d9"/>
+  <path d="M94 139c18 22 50 24 68 0-19 8-49 8-68 0Z" fill="#2d75d9"/>
+</svg>
