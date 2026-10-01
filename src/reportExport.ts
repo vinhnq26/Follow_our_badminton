@@ -1,4 +1,4 @@
-import type { ExpenseCategory, Match } from "./types";
+import type { ExpenseCategory, Match, Member } from "./types";
 
 type GroupReportInfo = {
 	name: string;
@@ -15,6 +15,14 @@ type ReportLine = {
 type ReportExpenseLine = ReportLine & {
 	category: ExpenseCategory;
 	categoryLabel: string;
+};
+
+export type GroupBackupSnapshot = {
+	version: 1;
+	exportedAt: string;
+	group: GroupReportInfo;
+	members: Member[];
+	matches: Match[];
 };
 
 export type MonthlyReportSnapshot = {
@@ -216,6 +224,30 @@ const downloadBlob = (
 	link.click();
 	link.remove();
 	URL.revokeObjectURL(url);
+};
+
+export const buildGroupBackupSnapshot = ({
+	members,
+	matches,
+	group,
+}: {
+	members: Member[];
+	matches: Match[];
+	group: GroupReportInfo;
+}): GroupBackupSnapshot => ({
+	version: 1,
+	exportedAt: new Date().toISOString(),
+	group,
+	members: [...members].sort((a, b) => a.name.localeCompare(b.name, "vi")),
+	matches: [...matches].sort((a, b) => b.startsAt.localeCompare(a.startsAt)),
+});
+
+export const downloadGroupBackup = (snapshot: GroupBackupSnapshot) => {
+	downloadBlob(
+		JSON.stringify(snapshot, null, 2),
+		`du-lieu-nhom-${new Date().toISOString().slice(0, 10)}.json`,
+		"application/json;charset=utf-8",
+	);
 };
 
 export const downloadMonthlyReport = (

@@ -7,7 +7,22 @@ Landing page React/Vite giúp nhóm theo dõi lịch đánh, thu chi và điểm
 - **Lịch đánh:** linh hoạt, có thể sắp vào nhiều ngày khác nhau
 - **Tên sân:** Sân cầu lông PIXIHUB
 - **Địa chỉ:** 10 Bế Văn Cấm, Tân Hưng, Hồ Chí Minh
-- **Tài khoản admin demo:** `admin` / `admin123`
+- **Admin:** đăng nhập bằng tài khoản email được tạo trong Supabase Auth
+
+## Cấu hình Supabase
+
+1. Tạo project trên Supabase.
+2. Mở SQL Editor và chạy toàn bộ file `supabase/schema.sql`.
+3. Nếu cần nạp các buổi cầu đã cung cấp, chạy tiếp file `supabase/import-matches-2026-09.sql`.
+4. Tạo tài khoản admin trong Supabase Auth, sau đó thêm UUID tài khoản vào bảng `admin_users`.
+5. Tạo file `.env.local` từ `.env.example` và điền URL cùng anon key của project:
+
+```bash
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-public-key
+```
+
+Không đưa service-role key vào frontend hoặc commit file `.env.local`.
 
 ## Chạy local
 
@@ -16,7 +31,7 @@ npm install
 npm run dev
 ```
 
-Mở `http://localhost:5173`.
+Mở `http://localhost:5173`. Dữ liệu lịch, thu chi, điểm danh và thành viên được đọc/ghi qua Supabase nên các thiết bị khác có thể xem cùng một dữ liệu.
 
 ## Tính năng chính
 
@@ -25,9 +40,10 @@ Mở `http://localhost:5173`.
 - Admin có thể thêm, sửa, xóa trận; ngày giờ buổi cầu có thể chọn linh hoạt.
 - Admin nhập các khoản thu/chi, điểm danh thành viên trong từng buổi và xem tổng kết tháng.
 - Trang `/admin/members` cho phép thêm, xóa khỏi danh sách hoạt động và khôi phục thành viên.
-- Dữ liệu prototype lưu trong `localStorage` của trình duyệt; chưa phù hợp làm authentication production.
-- Trong `/admin/reports`, admin có thể chọn từng tháng và xuất hóa đơn dạng `.txt` hoặc tải snapshot dữ liệu dạng `.json`.
-- File xuất được tải xuống từ trình duyệt; trình duyệt không thể tự ghi trực tiếp file vào thư mục `src`. Không tạo thêm key `localStorage` cho thao tác xuất báo cáo.
+- Dữ liệu runtime được lưu tập trung trên Supabase, không phụ thuộc localStorage của một thiết bị.
+- Trong `/admin/reports`, admin có thể chọn từng tháng và xuất hóa đơn dạng `.txt` hoặc tải snapshot tháng dạng `.json`.
+- Nút **Sao lưu toàn bộ JSON** tải danh sách thành viên, toàn bộ trận đấu, thu chi, điểm danh và metadata gốc để lưu trữ.
+- File xuất được tải xuống từ trình duyệt để lưu trữ/chia sẻ; dữ liệu chính vẫn nằm trên Supabase.
 
 ## Danh sách thành viên ban đầu
 
@@ -45,4 +61,8 @@ Mở `http://localhost:5173`.
 
 ## Lưu ý dữ liệu
 
-Phiên bản mới dùng key `foflo-matches-v2`. Trong lần mở đầu tiên, dữ liệu cũ ở `foflo-matches-v1` và các trận mẫu trước đây sẽ được xóa một lần; lịch sử bắt đầu trống để admin nhập từ thời điểm sử dụng thật. Sau đó dữ liệu trận, thành viên và điểm danh được lưu lại trong trình duyệt hiện tại.
+Supabase là nguồn dữ liệu chính dùng chung cho mọi thiết bị. File JSON tải từ mục báo cáo là bản snapshot để lưu trữ/chia sẻ, không tự động ghi ngược vào thư mục `src` và cũng không thay thế cơ chế backup của Supabase.
+
+Nếu trình duyệt trước đây đã có dữ liệu localStorage, hãy tải/ghi lại dữ liệu cần giữ trước khi chuyển sang Supabase. Chưa có cơ chế tự động nhập dữ liệu cũ, vì vậy không nên xóa dữ liệu trình duyệt cũ cho đến khi đã kiểm tra dữ liệu trên project Supabase.
+
+Để sao lưu dài hạn, dùng chức năng backup/export của Supabase hoặc tải các báo cáo JSON định kỳ. Khi triển khai production, cần cấu hình hai biến môi trường `VITE_SUPABASE_URL` và `VITE_SUPABASE_ANON_KEY` trên hosting; chỉ dùng anon key ở frontend và luôn giữ Row Level Security bật.

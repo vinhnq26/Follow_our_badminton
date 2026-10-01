@@ -20,6 +20,7 @@
 
 /* Global text tracking requested for the interface. */
 body, body * { letter-spacing: 1px !important; }
+.system-state { display: grid; place-items: center; gap: 12px; min-height: 100vh; padding: 32px; color: var(--muted); background: #f7faf9; text-align: center; }.system-state svg { color: var(--teal); }.system-state h1 { margin: 0; color: var(--ink); font-size: 28px; }.system-state p { max-width: 620px; margin: 0; line-height: 1.6; }.system-state code { padding: 3px 6px; color: var(--teal-dark); background: #e2f3ed; border-radius: 5px; }
 
 .address-line { display: flex; align-items: center; gap: 6px; margin-top: 12px; color: #8eafa5; font-size: 11px; }
 .address-card { display: flex; align-items: center; gap: 14px; padding: 21px 24px; color: var(--teal-dark); background: #fff; border: 1px solid var(--line); border-radius: var(--radius-md); }
@@ -39,4 +40,5 @@ body, body * { letter-spacing: 1px !important; }
 
 .report-actions { display: flex; align-items: end; justify-content: flex-end; gap: 9px; flex-wrap: wrap; }
 .report-actions .subtle-button { min-height: 45px; }
+button:disabled { cursor: not-allowed; opacity: .62; transform: none !important; }
 @media (max-width: 680px) { .report-actions { width: 100%; justify-content: stretch; }.report-actions .month-select,.report-actions .button,.report-actions .subtle-button { width: 100%; }.report-actions .month-select select { width: 100%; } }

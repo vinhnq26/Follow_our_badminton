@@ -38,18 +38,24 @@ import type {
 } from "./types";
 import { GROUP_PROFILE, nextFriday } from "./data";
 import {
-	loadMatches,
-	loadMembers,
-	MATCHES_KEY,
-	MEMBERS_KEY,
-	writeJson,
-} from "./storage";
-import {
+	buildGroupBackupSnapshot,
 	buildMonthlyReportSnapshot,
+	downloadGroupBackup,
 	downloadMonthlyReport,
 } from "./reportExport";
-
-const AUTH_KEY = "foflo-auth-v1";
+import { hasSupabaseConfig, supabase } from "./lib/supabase";
+import {
+	addMemberRemote,
+	archiveMemberRemote,
+	deleteMatchRemote,
+	getSession,
+	isCurrentUserAdmin,
+	loadSnapshot,
+	restoreMemberRemote,
+	saveMatchRemote,
+	signIn,
+	signOut,
+} from "./repository";
 const money = new Intl.NumberFormat("vi-VN", {
 	style: "currency",
 	currency: "VND",
@@ -66,6 +72,12 @@ const expenseLabels: Record<ExpenseCategory, string> = {
 	other: "Khác",
 };
 const uid = () => Math.random().toString(36).slice(2, 10);
+const errorMessage = (error: unknown, fallback: string) =>
+	error instanceof Error
+		? error.message
+		: typeof error === "object" && error !== null && "message" in error
+			? String(error.message)
+			: fallback;
 const sum = (items: { amount: number }[]) =>
 	items.reduce((total, item) => total + (Number(item.amount) || 0), 0);
 const incomeTotal = (match: Match) => sum(match.incomeItems);
@@ -111,19 +123,72 @@ const blankDraft = (): MatchDraft => ({
 
 function App() {
 	const [path, setPath] = useState(window.location.pathname);
-	const [matches, setMatches] = useState<Match[]>(loadMatches);
-	const [members, setMembers] = useState<Member[]>(loadMembers);
-	const [authed, setAuthed] = useState(
-		() => localStorage.getItem(AUTH_KEY) !== null,
-	);
+	const [matches, setMatches] = useState<Match[]>([]);
+	const [members, setMembers] = useState<Member[]>([]);
+	const [authed, setAuthed] = useState(false);
+	const [authReady, setAuthReady] = useState(!hasSupabaseConfig);
+	const [dataLoading, setDataLoading] = useState(hasSupabaseConfig);
+	const [dataError, setDataError] = useState("");
 	const [mobileMenu, setMobileMenu] = useState(false);
 
+	const refreshData = async (showLoading = false) => {
+		if (showLoading) setDataLoading(true);
+		try {
+			const snapshot = await loadSnapshot();
+			setMembers(snapshot.members);
+			setMatches(snapshot.matches);
+			setDataError("");
+		} catch (error) {
+			if (showLoading)
+				setDataError(error instanceof Error ? error.message : "Không thể tải dữ liệu.");
+		} finally {
+			if (showLoading) setDataLoading(false);
+		}
+	};
+
 	useEffect(() => {
-		writeJson(MATCHES_KEY, matches);
-	}, [matches]);
+		if (hasSupabaseConfig) void refreshData(true);
+	}, []);
 	useEffect(() => {
-		writeJson(MEMBERS_KEY, members);
-	}, [members]);
+		if (!supabase) return;
+		let active = true;
+		const initializeAuth = async () => {
+			try {
+				const session = await getSession();
+				if (session && (await isCurrentUserAdmin()) && active) setAuthed(true);
+			} catch {
+				if (active) setAuthed(false);
+			} finally {
+				if (active) setAuthReady(true);
+			}
+		};
+		void initializeAuth();
+		const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+			if (!session) setAuthed(false);
+		});
+		return () => {
+			active = false;
+			data.subscription.unsubscribe();
+		};
+	}, []);
+	useEffect(() => {
+		const client = supabase;
+		if (!client) return;
+		let timer: number | undefined;
+		const refreshAfterChange = () => {
+			window.clearTimeout(timer);
+			timer = window.setTimeout(() => void refreshData(), 250);
+		};
+		const channel = client
+			.channel("shared-group-data")
+			.on("postgres_changes", { event: "*", schema: "public", table: "matches" }, refreshAfterChange)
+			.on("postgres_changes", { event: "*", schema: "public", table: "members" }, refreshAfterChange)
+			.subscribe();
+		return () => {
+			window.clearTimeout(timer);
+			void client.removeChannel(channel);
+		};
+	}, []);
 	useEffect(() => {
 		const onPop = () => setPath(window.location.pathname);
 		window.addEventListener("popstate", onPop);
@@ -135,43 +200,47 @@ function App() {
 		setMobileMenu(false);
 		window.scrollTo({ top: 0, behavior: "smooth" });
 	};
-	const login = (username: string, password: string) => {
-		if (username === "admin" && password === "admin123") {
-			localStorage.setItem(AUTH_KEY, JSON.stringify({ username }));
+	const login = async (email: string, password: string) => {
+		try {
+			await signIn(email, password);
+			if (!(await isCurrentUserAdmin())) {
+				await signOut();
+				return "Tài khoản này chưa được cấp quyền quản trị.";
+			}
 			setAuthed(true);
 			navigate("/admin/overview");
-			return true;
+			return "";
+		} catch (error) {
+			return error instanceof Error ? error.message : "Tài khoản hoặc mật khẩu chưa đúng.";
 		}
-		return false;
 	};
-	const logout = () => {
-		localStorage.removeItem(AUTH_KEY);
-		setAuthed(false);
-		navigate("/");
+	const logout = async () => {
+		try {
+			await signOut();
+		} finally {
+			setAuthed(false);
+			navigate("/");
+		}
 	};
-	const saveMatch = (draft: MatchDraft, id?: string) => {
-		const now = new Date().toISOString();
+	const saveMatch = async (draft: MatchDraft, id?: string) => {
 		const cleanDraft = {
 			...draft,
 			attendanceIds: draft.attendanceIds.filter((memberId) =>
 				members.some((member) => member.id === memberId),
 			),
 		};
-		if (id)
-			setMatches((current) =>
-				current.map((match) =>
-					match.id === id ? { ...match, ...cleanDraft, updatedAt: now } : match,
-				),
-			);
-		else
-			setMatches((current) => [
-				{ ...cleanDraft, id: uid(), createdAt: now, updatedAt: now },
-				...current,
-			]);
+		const saved = await saveMatchRemote(cleanDraft, id);
+		setMatches((current) =>
+			id
+				? current.map((match) => (match.id === id ? saved : match))
+				: [saved, ...current],
+		);
 	};
-	const deleteMatch = (id: string) =>
+	const deleteMatch = async (id: string) => {
+		await deleteMatchRemote(id);
 		setMatches((current) => current.filter((match) => match.id !== id));
-	const addMember = (name: string) => {
+	};
+	const addMember = async (name: string) => {
 		const trimmed = name.trim();
 		if (!trimmed) return "Vui lòng nhập tên thành viên.";
 		if (
@@ -181,33 +250,28 @@ function App() {
 			)
 		)
 			return "Tên thành viên này đã tồn tại.";
-		setMembers((current) => [
-			...current,
-			{ id: uid(), name: trimmed, active: true },
-		]);
-		return "";
+		try {
+			const member = await addMemberRemote(trimmed);
+			setMembers((current) => [...current, member]);
+			return "";
+		} catch (error) {
+			return error instanceof Error ? error.message : "Không thể thêm thành viên.";
+		}
 	};
-	const removeMember = (id: string) =>
-		setMembers((current) =>
-			current.map((member) =>
-				member.id === id
-					? { ...member, active: false, removedAt: new Date().toISOString() }
-					: member,
-			),
-		);
-	const restoreMember = (id: string) =>
-		setMembers((current) =>
-			current.map((member) =>
-				member.id === id
-					? { ...member, active: true, removedAt: undefined }
-					: member,
-			),
-		);
+	const removeMember = async (id: string) => {
+		const member = await archiveMemberRemote(id);
+		setMembers((current) => current.map((item) => (item.id === id ? member : item)));
+	};
+	const restoreMember = async (id: string) => {
+		const member = await restoreMemberRemote(id);
+		setMembers((current) => current.map((item) => (item.id === id ? member : item)));
+	};
 
+	if (!hasSupabaseConfig) return <SetupState />;
+	if (!authReady || dataLoading) return <LoadingState />;
+	if (dataError) return <ErrorState message={dataError} onRetry={refreshData} />;
 	if (path.startsWith("/admin")) {
-		if (path === "/admin/login")
-			return <LoginPage onLogin={login} onBack={() => navigate("/")} />;
-		if (!authed)
+		if (path === "/admin/login" || !authed)
 			return <LoginPage onLogin={login} onBack={() => navigate("/")} />;
 		return (
 			<AdminShell
@@ -233,6 +297,42 @@ function App() {
 			mobileMenu={mobileMenu}
 			setMobileMenu={setMobileMenu}
 		/>
+	);
+}
+
+function SetupState() {
+	return (
+		<div className="system-state">
+			<ShieldCheck size={28} />
+			<h1>Cần cấu hình Supabase</h1>
+			<p>
+				Tạo file <code>.env.local</code> từ <code>.env.example</code>, điền URL và anon key
+				của Supabase rồi khởi động lại ứng dụng.
+			</p>
+		</div>
+	);
+}
+
+function LoadingState() {
+	return (
+		<div className="system-state">
+			<Clock3 size={28} />
+			<h1>Đang tải dữ liệu nhóm...</h1>
+			<p>Dữ liệu được đọc từ Supabase dùng chung.</p>
+		</div>
+	);
+}
+
+function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
+	return (
+		<div className="system-state">
+			<X size={28} />
+			<h1>Không thể tải dữ liệu</h1>
+			<p>{message}</p>
+			<button type="button" className="button button-primary" onClick={onRetry}>
+				Thử lại
+			</button>
+		</div>
 	);
 }
 
@@ -830,12 +930,12 @@ function AdminShell({
 	navigate: (path: string) => void;
 	matches: Match[];
 	members: Member[];
-	saveMatch: (draft: MatchDraft, id?: string) => void;
-	deleteMatch: (id: string) => void;
-	addMember: (name: string) => string;
-	removeMember: (id: string) => void;
-	restoreMember: (id: string) => void;
-	logout: () => void;
+	saveMatch: (draft: MatchDraft, id?: string) => Promise<void>;
+	deleteMatch: (id: string) => Promise<void>;
+	addMember: (name: string) => Promise<string>;
+	removeMember: (id: string) => Promise<void>;
+	restoreMember: (id: string) => Promise<void>;
+	logout: () => Promise<void>;
 }) {
 	const section = path.includes("matches")
 		? "matches"
@@ -934,7 +1034,7 @@ function AdminShell({
 						restoreMember={restoreMember}
 					/>
 				) : (
-					<AdminReports matches={matches} />
+					<AdminReports matches={matches} members={members} />
 				)}
 			</main>
 		</div>
@@ -1099,11 +1199,24 @@ function AdminMatches({
 }: {
 	matches: Match[];
 	members: Member[];
-	saveMatch: (draft: MatchDraft, id?: string) => void;
-	deleteMatch: (id: string) => void;
+	saveMatch: (draft: MatchDraft, id?: string) => Promise<void>;
+	deleteMatch: (id: string) => Promise<void>;
 }) {
 	const [editing, setEditing] = useState<Match | "new" | null>(null);
 	const [query, setQuery] = useState("");
+	const [actionError, setActionError] = useState("");
+	const [deletingId, setDeletingId] = useState<string | null>(null);
+	const handleDelete = async (id: string) => {
+		setDeletingId(id);
+		setActionError("");
+		try {
+			await deleteMatch(id);
+		} catch (error) {
+			setActionError(errorMessage(error, "Không thể xóa buổi cầu."));
+		} finally {
+			setDeletingId(null);
+		}
+	};
 	const filtered = matches
 		.filter((match) =>
 			`${match.venue} ${match.courtNumber}`
@@ -1123,6 +1236,7 @@ function AdminMatches({
 					</p>
 				</div>
 				<button
+					type="button"
 					className="button button-primary"
 					onClick={() => setEditing("new")}
 				>
@@ -1142,6 +1256,7 @@ function AdminMatches({
 					<CalendarDays size={14} /> Có thể chọn mọi ngày
 				</span>
 			</div>
+			{actionError ? <div className="form-error">{actionError}</div> : null}
 			<section className="admin-panel match-table-panel">
 				<div className="table-head">
 					<span>{filtered.length} trận đấu</span>
@@ -1179,6 +1294,7 @@ function AdminMatches({
 								</div>
 								<div className="row-actions">
 									<button
+										type="button"
 										className="icon-button"
 										onClick={() => setEditing(match)}
 										aria-label="Sửa trận"
@@ -1186,10 +1302,12 @@ function AdminMatches({
 										<Edit3 size={16} />
 									</button>
 									<button
+										type="button"
 										className="icon-button danger"
+										disabled={deletingId === match.id}
 										onClick={() => {
 											if (confirm("Xóa buổi cầu này khỏi sổ nhóm?"))
-												deleteMatch(match.id);
+												void handleDelete(match.id);
 										}}
 										aria-label="Xóa trận"
 									>
@@ -1208,8 +1326,8 @@ function AdminMatches({
 					match={editing === "new" ? null : editing}
 					members={members}
 					onClose={() => setEditing(null)}
-					onSave={(draft, id) => {
-						saveMatch(draft, id);
+					onSave={async (draft, id) => {
+						await saveMatch(draft, id);
 						setEditing(null);
 					}}
 				/>
@@ -1227,7 +1345,7 @@ function MatchEditor({
 	match: Match | null;
 	members: Member[];
 	onClose: () => void;
-	onSave: (draft: MatchDraft, id?: string) => void;
+	onSave: (draft: MatchDraft, id?: string) => Promise<void>;
 }) {
 	const [draft, setDraft] = useState<MatchDraft>(() =>
 		match
@@ -1244,6 +1362,7 @@ function MatchEditor({
 			: blankDraft(),
 	);
 	const [error, setError] = useState("");
+	const [saving, setSaving] = useState(false);
 	const update = <K extends keyof MatchDraft>(key: K, value: MatchDraft[K]) =>
 		setDraft((current) => ({ ...current, [key]: value }));
 	const addIncome = () =>
@@ -1256,7 +1375,7 @@ function MatchEditor({
 			...draft.expenseItems,
 			{ id: uid(), category: "other", label: "", amount: 0 },
 		]);
-	const submit = (event: React.FormEvent) => {
+	const submit = async (event: React.SyntheticEvent<HTMLFormElement>) => {
 		event.preventDefault();
 		if (!draft.startsAt) {
 			setError("Vui lòng chọn ngày và giờ cho buổi cầu.");
@@ -1283,7 +1402,10 @@ function MatchEditor({
 			return;
 		}
 		setError("");
-		onSave(
+		if (saving) return;
+		setSaving(true);
+		try {
+		await onSave(
 			{
 				...draft,
 				venue: draft.venue.trim(),
@@ -1301,6 +1423,11 @@ function MatchEditor({
 			},
 			match?.id,
 		);
+		} catch (saveError) {
+			setError(saveError instanceof Error ? saveError.message : "Không thể lưu buổi cầu.");
+		} finally {
+			setSaving(false);
+		}
 	};
 	const attendanceMembers = members.filter(
 		(member) => member.active || draft.attendanceIds.includes(member.id),
@@ -1320,7 +1447,7 @@ function MatchEditor({
 							{match ? "Cập nhật buổi cầu" : "Thêm trận đấu"}
 						</h2>
 					</div>
-					<button className="modal-close" onClick={onClose} aria-label="Đóng">
+					<button type="button" className="modal-close" onClick={onClose} aria-label="Đóng">
 						<X size={19} />
 					</button>
 				</div>
@@ -1425,8 +1552,8 @@ function MatchEditor({
 						<button type="button" className="subtle-button" onClick={onClose}>
 							Hủy
 						</button>
-						<button type="submit" className="button button-primary">
-							<Save size={16} /> Lưu buổi cầu
+						<button type="submit" className="button button-primary" disabled={saving}>
+							<Save size={16} /> {saving ? "Đang lưu..." : "Lưu buổi cầu"}
 						</button>
 					</div>
 				</form>
@@ -1529,21 +1656,28 @@ function AdminMembers({
 	restoreMember,
 }: {
 	members: Member[];
-	addMember: (name: string) => string;
-	removeMember: (id: string) => void;
-	restoreMember: (id: string) => void;
+	addMember: (name: string) => Promise<string>;
+	removeMember: (id: string) => Promise<void>;
+	restoreMember: (id: string) => Promise<void>;
 }) {
 	const [name, setName] = useState("");
 	const [error, setError] = useState("");
+	const [saving, setSaving] = useState(false);
 	const active = members.filter((member) => member.active);
 	const archived = members.filter((member) => !member.active);
-	const submit = (event: React.FormEvent) => {
+	const submit = async (event: React.SyntheticEvent<HTMLFormElement>) => {
 		event.preventDefault();
-		const result = addMember(name);
+		if (saving) return;
+		setSaving(true);
+		try {
+		const result = await addMember(name);
 		if (result) setError(result);
 		else {
 			setName("");
 			setError("");
+		}
+		} finally {
+			setSaving(false);
 		}
 	};
 	return (
@@ -1568,8 +1702,8 @@ function AdminMembers({
 							placeholder="Nhập họ và tên..."
 						/>
 					</label>
-					<button className="button button-primary" type="submit">
-						<UserPlus size={16} /> Thêm người
+					<button className="button button-primary" type="submit" disabled={saving}>
+						<UserPlus size={16} /> {saving ? "Đang thêm..." : "Thêm người"}
 					</button>
 				</form>
 				{error ? <div className="form-error">{error}</div> : null}
@@ -1582,6 +1716,7 @@ function AdminMembers({
 							<span className="member-name">{member.name}</span>
 							<span className="active-badge">Đang hoạt động</span>
 							<button
+							type="button"
 								className="remove-member"
 								onClick={() => {
 									if (confirm(`Xóa ${member.name} khỏi danh sách hoạt động?`))
@@ -1610,6 +1745,7 @@ function AdminMembers({
 								<span className="member-name">{member.name}</span>
 								<span className="archived-badge">Đã lưu lịch sử</span>
 								<button
+									type="button"
 									className="subtle-button"
 									onClick={() => restoreMember(member.id)}
 								>
@@ -1623,7 +1759,7 @@ function AdminMembers({
 		</div>
 	);
 }
-function AdminReports({ matches }: { matches: Match[] }) {
+function AdminReports({ matches, members }: { matches: Match[]; members: Member[] }) {
 	const months = [...new Set(matches.map((m) => monthKey(m.startsAt)))]
 		.sort()
 		.reverse();
@@ -1648,6 +1784,19 @@ function AdminReports({ matches }: { matches: Match[] }) {
 		}))
 		.filter((item) => item.amount > 0);
 	const max = Math.max(income, expense, 1);
+	const exportBackup = () => {
+		downloadGroupBackup(
+			buildGroupBackupSnapshot({
+				members,
+				matches,
+				group: {
+					name: GROUP_PROFILE.name,
+					address: GROUP_PROFILE.address,
+					defaultVenue: GROUP_PROFILE.defaultVenue,
+				},
+			}),
+		);
+	};
 	const exportReport = (format: "txt" | "json") => {
 		const snapshot = buildMonthlyReportSnapshot({
 			month: selectedMonth,
@@ -1695,7 +1844,14 @@ function AdminReports({ matches }: { matches: Match[] }) {
 						className="subtle-button"
 						onClick={() => exportReport("json")}
 					>
-						<Download size={16} /> Tải dữ liệu JSON
+						<Download size={16} /> Tải tháng JSON
+					</button>
+					<button
+						type="button"
+						className="subtle-button"
+						onClick={exportBackup}
+					>
+						<Download size={16} /> Sao lưu toàn bộ JSON
 					</button>
 				</div>
 			</div>
@@ -1747,6 +1903,7 @@ function AdminReports({ matches }: { matches: Match[] }) {
 					</div>
 					<div
 						className="bar-chart"
+						role="img"
 						aria-label="Biểu đồ so sánh tổng thu và tổng chi"
 					>
 						<div className="axis-label axis-top">
@@ -1846,16 +2003,25 @@ function LoginPage({
 	onLogin,
 	onBack,
 }: {
-	onLogin: (username: string, password: string) => boolean;
+	onLogin: (username: string, password: string) => Promise<string>;
 	onBack: () => void;
 }) {
 	const [username, setUsername] = useState("");
 	const [password, setPassword] = useState("");
 	const [error, setError] = useState("");
-	const submit = (event: React.FormEvent) => {
+	const [saving, setSaving] = useState(false);
+	const submit = async (event: React.SyntheticEvent<HTMLFormElement>) => {
 		event.preventDefault();
-		if (!onLogin(username, password))
-			setError("Tài khoản hoặc mật khẩu chưa đúng.");
+		if (saving) return;
+		setSaving(true);
+		setError("");
+		try {
+			setError(await onLogin(username.trim(), password));
+		} catch (loginError) {
+			setError(errorMessage(loginError, "Không thể đăng nhập."));
+		} finally {
+			setSaving(false);
+		}
 	};
 	return (
 		<div className="login-shell">
@@ -1874,7 +2040,7 @@ function LoginPage({
 				</div>
 			</div>
 			<main className="login-card">
-				<button className="back-link" onClick={onBack}>
+				<button type="button" className="back-link" onClick={onBack}>
 					← Về trang thành viên
 				</button>
 				<div className="login-heading">
@@ -1887,12 +2053,12 @@ function LoginPage({
 				</div>
 				<form onSubmit={submit}>
 					<label>
-						Tài khoản
+						Email quản trị
 						<input
-							autoFocus
+							type="email"
 							value={username}
 							onChange={(e) => setUsername(e.target.value)}
-							placeholder="Nhập tài khoản"
+							placeholder="admin@example.com"
 						/>
 					</label>
 					<label>
@@ -1905,8 +2071,8 @@ function LoginPage({
 						/>
 					</label>
 					{error ? <div className="form-error">{error}</div> : null}
-					<button type="submit" className="button button-primary login-submit">
-						<LogIn size={17} /> Đăng nhập
+					<button type="submit" className="button button-primary login-submit" disabled={saving}>
+						<LogIn size={17} /> {saving ? "Đang đăng nhập..." : "Đăng nhập"}
 					</button>
 				</form>
 				<div className="demo-hint">
@@ -1915,8 +2081,8 @@ function LoginPage({
 					</span>
 				</div>
 				<p className="login-disclaimer">
-					Đây là phiên bản demo chạy trên trình duyệt. Dữ liệu được lưu cục bộ
-					trên thiết bị của bạn.
+					Tài khoản được xác thực bằng Supabase Auth. Dữ liệu nhóm được lưu dùng chung
+					trên Supabase.
 				</p>
 			</main>
 		</div>
