@@ -191,10 +191,10 @@ export const buildMonthlyReportText = (snapshot: MonthlyReportSnapshot) => {
 						`${formatCompactVnd(item.amount)} ${expenseDescription(item.label, item.category)}`,
 				)
 				.join(" + ");
-			const incomePart = income ? `Thu: ${income}` : "Không có khoản thu";
+			// const incomePart = income ? `Thu: ${income}` : "Không có khoản thu";
 			const expensePart = expenses ? `Chi: ${expenses}` : "Không có khoản chi";
 			lines.push(
-				`${formatDayMonth(match.startsAt)} · ${match.time} · ${match.venue} · ${incomePart} · ${expensePart}`,
+				`${formatDayMonth(match.startsAt)} · ${match.time} · ${match.venue} · ${expensePart}`,
 			);
 			if (match.notes) lines.push(`  Ghi chú: ${match.notes}`);
 		}
@@ -202,9 +202,9 @@ export const buildMonthlyReportText = (snapshot: MonthlyReportSnapshot) => {
 
 	lines.push(
 		"",
-		`TỔNG THU: ${formatVnd(snapshot.totals.totalIncome)}`,
+		// `TỔNG THU: ${formatVnd(snapshot.totals.totalIncome)}`,
 		`TỔNG CHI: ${formatVnd(snapshot.totals.totalExpense)}`,
-		`SỐ DƯ: ${formatVnd(snapshot.totals.balance)}`,
+		// `SỐ DƯ: ${formatVnd(snapshot.totals.balance)}`,
 	);
 	return lines.join("\n");
 };

@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { Select } from "antd";
+import "antd/dist/reset.css";
 import {
 	ArrowRight,
 	BarChart3,
@@ -45,6 +47,7 @@ import {
 	downloadGroupBackup,
 	downloadMonthlyReport,
 } from "./reportExport";
+import { buildPaymentEmailDraft, paymentEmailGmailUrl } from "./paymentEmail";
 import { hasSupabaseConfig, supabase } from "./lib/supabase";
 import {
 	addMemberRemote,
@@ -1798,6 +1801,9 @@ function AdminReports({ matches, members }: { matches: Match[]; members: Member[
 	const [selectedMonth, setSelectedMonth] = useState(
 		months[0] || monthKey(new Date().toISOString()),
 	);
+	const [paymentMonths, setPaymentMonths] = useState<string[]>(months[0] ? [months[0]] : []);
+	const [paymentDraft, setPaymentDraft] = useState<ReturnType<typeof buildPaymentEmailDraft> | null>(null);
+	const [paymentStatus, setPaymentStatus] = useState("");
 	const selected = matches.filter(
 		(m) => monthKey(m.startsAt) === selectedMonth,
 	);
@@ -1841,6 +1847,43 @@ function AdminReports({ matches, members }: { matches: Match[]; members: Member[
 			},
 		});
 		downloadMonthlyReport(snapshot, format);
+	};
+	const createPaymentEmail = () => {
+		const selectedMonths = [...new Set(paymentMonths)];
+		if (!selectedMonths.length) {
+			setPaymentStatus("Vui lòng chọn ít nhất một tháng.");
+			return;
+		}
+		const emptyMonth = selectedMonths.find(
+			(month) => !matches.some((match) => monthKey(match.startsAt) === month),
+		);
+		if (emptyMonth) {
+			setPaymentStatus(`Chưa có dữ liệu cho ${monthLabel(emptyMonth)}.`);
+			return;
+		}
+		const draft = buildPaymentEmailDraft({
+			months: selectedMonths,
+			matches,
+			members,
+		});
+		for (const month of selectedMonths) {
+			downloadMonthlyReport(
+				buildMonthlyReportSnapshot({
+					month,
+					monthLabel: monthLabel(month),
+					matches: matches.filter((match) => monthKey(match.startsAt) === month),
+					group: {
+						name: GROUP_PROFILE.name,
+						address: GROUP_PROFILE.address,
+						defaultVenue: GROUP_PROFILE.defaultVenue,
+					},
+				}),
+				"txt",
+			);
+		}
+		setPaymentDraft(draft);
+		setPaymentStatus("Đã tạo bản nháp. Hãy kiểm tra nội dung và đính kèm hóa đơn trước khi gửi.");
+		window.open(paymentEmailGmailUrl(draft), "_blank", "noopener,noreferrer");
 	};
 	return (
 		<div className="admin-content">
@@ -1887,7 +1930,58 @@ function AdminReports({ matches, members }: { matches: Match[]; members: Member[
 					</button>
 				</div>
 			</div>
-			<div className="kpi-grid report-kpis">
+			<div className="payment-email-controls">
+					<label className="month-select">
+						Tháng thanh toán (chọn tối đa 2 tháng)
+							<Select
+								mode="multiple"
+								allowClear
+								maxTagCount="responsive"
+								placeholder="Chọn tháng cần thanh toán"
+								value={paymentMonths}
+								options={(months.length ? months : [selectedMonth]).map((month) => ({
+									value: month,
+									label: monthLabel(month),
+								}))}
+								onChange={(values: string[]) => {
+									if (values.length > 2) {
+										setPaymentStatus("Chỉ có thể chọn tối đa 2 tháng.");
+										return;
+									}
+									setPaymentMonths(values);
+								}}
+							/>
+					</label>
+					<button
+						type="button"
+						className="button button-primary"
+						onClick={createPaymentEmail}
+					>
+						<ReceiptText size={16} /> Tạo email thanh toán
+					</button>
+					{paymentStatus ? <span className="payment-email-status" role="status">{paymentStatus}</span> : null}
+				</div>
+				{paymentDraft ? (
+					<section className="admin-panel payment-email-preview" aria-live="polite">
+						<div className="panel-heading">
+							<div>
+								<span className="eyebrow">BẢN NHÁP EMAIL</span>
+								<h2>Đề xuất thanh toán</h2>
+							</div>
+							<button type="button" className="subtle-button" onClick={() => setPaymentDraft(null)}>
+								Đóng
+							</button>
+						</div>
+						<div className="payment-email-meta">
+							<div><strong>To:</strong> {paymentDraft.to}</div>
+							<div><strong>CC:</strong> {paymentDraft.cc}</div>
+							<div><strong>Subject:</strong> {paymentDraft.subject}</div>
+						</div>
+						<p className="field-help">Trình duyệt không tự đính kèm được file. Vui lòng tải hóa đơn/báo cáo và đính kèm thủ công trước khi gửi.</p>
+						<pre className="payment-email-body">{paymentDraft.body}</pre>
+					</section>
+				) : null}
+				<div className="kpi-grid report-kpis">
 				<KpiCard
 					label="Số trận"
 					value={String(selected.length)}
