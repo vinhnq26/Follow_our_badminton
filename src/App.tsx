@@ -437,6 +437,16 @@ function HomePage({
 		.filter((m) => m.id !== upcoming?.id)
 		.sort((a, b) => b.startsAt.localeCompare(a.startsAt))
 		.slice(0, 3);
+	const activeMembers = members.filter((member) => member.active);
+	const [showMembers, setShowMembers] = useState(false);
+	useEffect(() => {
+		if (!showMembers) return;
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (event.key === "Escape") setShowMembers(false);
+		};
+		document.addEventListener("keydown", onKeyDown);
+		return () => document.removeEventListener("keydown", onKeyDown);
+	}, [showMembers]);
 	return (
 		<main>
 			<section className="hero-section" style={{ letterSpacing: 1 }}>
@@ -480,18 +490,22 @@ function HomePage({
 								<span>VR</span>
 								<span>
 									+
-									{Math.max(
-										0,
-										members.filter((member) => member.active).length - 3,
-									)}
+									{Math.max(0, activeMembers.length - 3)}
 								</span>
 							</div>
-							<span>
-								{members.filter((member) => member.active).length} thành viên
-								trong nhóm
-							</span>
+							<span>{activeMembers.length} thành viên trong nhóm</span>
+							<button
+								type="button"
+								className="text-button member-view-button"
+								onClick={() => setShowMembers(true)}
+								aria-haspopup="dialog"
+								aria-expanded={showMembers}
+								aria-controls="public-members-dialog"
+							>
+								Xem <Eye size={15} />
+							</button>
 						</div>
-					</div>
+						</div>
 					<div className="hero-art" aria-hidden="true">
 						<div className="court-lines">
 							<span className="court-net" />
@@ -587,7 +601,58 @@ function HomePage({
 					Xem bảng thu chi <ArrowRight size={17} />
 				</button>
 			</section>
+		{showMembers ? (
+				<PublicMembersModal
+					members={activeMembers}
+					onClose={() => setShowMembers(false)}
+				/>
+			) : null}
 		</main>
+	);
+}
+
+function PublicMembersModal({
+	members,
+	onClose,
+}: {
+	members: Member[];
+	onClose: () => void;
+}) {
+	return (
+		<div
+			className="modal-backdrop"
+			role="presentation"
+			onMouseDown={(event) => event.target === event.currentTarget && onClose()}
+		>
+			<section
+				id="public-members-dialog"
+				className="detail-modal member-modal"
+				role="dialog"
+				aria-modal="true"
+				aria-labelledby="public-members-title"
+			>
+				<button type="button" className="modal-close" onClick={onClose} aria-label="Đóng">
+					<X size={19} />
+				</button>
+				<div className="eyebrow"><Users size={15} /> THÀNH VIÊN TRONG NHÓM</div>
+				<h2 id="public-members-title">Danh sách thành viên</h2>
+				<p className="member-modal-description">
+					Hiện có {members.length} thành viên đang tham gia cùng nhóm.
+				</p>
+				{members.length ? (
+					<ol className="public-member-list">
+						{members.map((member, index) => (
+							<li className="public-member-row" key={member.id}>
+								<span className="member-number">{index + 1}</span>
+								<span className="member-name">{member.name}</span>
+							</li>
+						))}
+					</ol>
+				) : (
+					<p className="member-modal-empty">Chưa có thành viên đang hoạt động.</p>
+				)}
+			</section>
+		</div>
 	);
 }
 
